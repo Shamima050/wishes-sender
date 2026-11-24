@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WishesSender - Connections</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="layout">
+  <nav class="sidebar" id="sidebar"></nav>
+  <main>
+    <!--
+      One page, two modes:
+        connections.html            -> my connections (every user)
+        connections.html?scope=all  -> all connections of all users (admin only), with a People filter
+    -->
+    <div class="row space-between">
+      <h1 id="title">🔗 Connections</h1>
+      <a class="btn" href="people.html?add=1" id="addBtn">+ Add connection</a>
+    </div>
+    <p class="muted" id="subtitle"></p>
+
+    <div class="card">
+      <div class="filters">
+        <div id="ownerBox" class="hidden">
+          <label>People</label>
+          <select id="owner" onchange="load()"><option value="0">All people</option></select>
+        </div>
+        <div><label>Search</label><input id="q" placeholder="🔍 Name..." oninput="load()"></div>
+        <div><label>Relation</label><select id="relation" onchange="load()"></select></div>
+        <div><label>Religion</label><select id="religion" onchange="load()"></select></div>
+        <div><label>Gender</label><select id="gender" onchange="load()"></select></div>
+        <div style="flex:0"><button class="btn-outline" onclick="resetFilters()">Reset</button></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <p class="muted" id="count"></p>
+      <div class="table-wrap"><table id="table"></table></div>
+    </div>
+  </main>
+</div>
+
+<script src="js/app.js"></script>
+<script>
+  const adminMode = param('scope') === 'all';
+  let me = null;
+
+  // <option>s for a filter: "All", every allowed value, and optionally "Not set"
+  function options(values, withNotSet) {
+    return '<option value="">All</option>' +
+      values.map(v => '<option>' + esc(v) + '</option>').join('') +
+      (withNotSet ? '<option value="NONE">Not set</option>' : '');
+  }
+
+  async function setupFilters() {
+    const lookups = await api('/api/lookups');
+    document.getElementById('relation').innerHTML = options(lookups.relations, false);
+    document.getElementById('religion').innerHTML = options(lookups.religions, true);
+    document.getElementById('gender').innerHTML = options(lookups.genders, true);
+
+    if (adminMode) {
+      const users = await api('/api/admin/users');
+      document.getElementById('owner').innerHTML += users.map(u =>
+        '<option value="' + u.id + '">' + esc(u.name) + ' (' + esc(u.email) + ')</option>').join('');
+      document.getElementById('ownerBox').classList.remove('hidden');
+      if (param('userId')) document.getElementById('owner').value = param('userId');
+    }
+  }
+
+  function filterQuery() {
+    const v = id => encodeURIComponent(document.getElementById(id).value);
+    return 'q=' + v('q') + '&relation=' + v('relation') + '&religion=' + v('religion') + '&gender=' + v('gender') +
+      (adminMode ? '&userId=' + v('owner') : '');
+  }
+
+  async function load() {
+    const url = adminMode ? '/api/admin/connections?' : '/api/connections?';
+    const list = await api(url + filterQuery());
+
+    let html = '<tr><th>Name</th><th>Relation</th>' + (adminMode ? '<th>Belongs to</th>' : '') +
+      '<th>Gender</th><th>Religion</th><th>Birthday</th><th>Next event</th><th>Interests</th><th></th></tr>';
+    for (const c of list) {
+      // Admins can open only their own connections (the profile page is private to its owner)
+      const canOpen = !adminMode || c.user_id === me.id;
+      html += '<tr>' +
+        '<td><b>' + esc(c.name) + '</b></td>' +
+        '<td><span class="tag">' + esc(c.relation) + '</span></td>' +
+        (adminMode ? '<td>' + esc(c.owner_name) + '<br><span class="muted">' + esc(c.owner_email) + '</span></td>' : '') +
+        '<td>' + esc(c.gender || '-') + '</td>' +
+        '<td>' + esc(c.religion || '-') + '</td>' +
+        '<td>' + (c.dob ? fmtDate(c.dob) : '-') + '</td>' +
+        '<td>' + (c.next_in_days === null ? '-' : daysText(c.next_in_days)) + '</td>' +
+        '<td>' + esc(c.interests || '-') + '</td>' +
+        '<td>' + (canOpen ? '<a class="btn btn-small" href="person.html?id=' + c.id + '">View</a>' : '') + '</td>' +
+        '</tr>';
+    }
+    document.getElementById('table').innerHTML = list.length ? html : '';
+    document.getElementById('count').textContent = list.length
+      ? list.length + ' connection(s)' : 'No connections match these filters.';
+  }
+
+  function resetFilters() {
+    ['q', 'relation', 'religion', 'gender'].forEach(id => document.getElementById(id).value = '');
+    if (adminMode) document.getElementById('owner').value = '0';
+    load();
+  }
+
+  async function start() {
+    me = await loadLayout(adminMode ? 'admin-connections' : 'connections');
+    if (adminMode && me.role !== 'ADMIN') {
+      location.href = 'connections.html';   // normal users only see their own connections
+      return;
+    }
+    if (adminMode) {
+      document.getElementById('title').textContent = '🌐 All connections';
+      document.getElementById('subtitle').textContent = 'Every connection of every user. Filter by person, religion or gender.';
+      document.getElementById('addBtn').classList.add('hidden');
+    } else {
+      document.getElementById('subtitle').textContent = 'All your connections in one table. Filter by religion or gender.';
+    }
+    await setupFilters();
+    load();
+  }
+  start();
+</script>
+</body>
+</html>

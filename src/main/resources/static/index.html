@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WishesSender - Login</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="center-page">
+  <div class="card auth-card">
+    <div class="hero">🎈🎁</div>
+    <h1 style="text-align:center">WishesSender</h1>
+    <p class="muted" style="text-align:center">Never miss a moment that matters.</p>
+
+    <!-- Login form -->
+    <form id="loginForm">
+      <label>Email</label>
+      <input type="email" id="loginEmail" required>
+      <label>Password</label>
+      <input type="password" id="loginPassword" required>
+      <button type="submit" style="width:100%">Log in</button>
+      <p class="muted" style="text-align:center">No account? <a href="#" onclick="showForm('register')">Register</a></p>
+    </form>
+
+    <!-- Register form -->
+    <form id="registerForm" class="hidden">
+      <label>Name</label>
+      <input id="regName" required>
+      <label>Email</label>
+      <input type="email" id="regEmail" required>
+      <label>Password (min 6 characters)</label>
+      <input type="password" id="regPassword" minlength="6" required>
+      <button type="submit" style="width:100%">Create account</button>
+      <p class="muted" style="text-align:center">Have an account? <a href="#" onclick="showForm('login')">Log in</a></p>
+    </form>
+
+    <p id="error" style="color:var(--coral);text-align:center"></p>
+  </div>
+</div>
+
+<script src="js/app.js"></script>
+<script>
+  function showForm(which) {
+    document.getElementById('loginForm').classList.toggle('hidden', which !== 'login');
+    document.getElementById('registerForm').classList.toggle('hidden', which !== 'register');
+    document.getElementById('error').textContent = '';
+  }
+
+  document.getElementById('loginForm').onsubmit = async (e) => {
+    e.preventDefault();
+    try {
+      await api('/api/auth/login', 'POST', {
+        email: document.getElementById('loginEmail').value,
+        password: document.getElementById('loginPassword').value
+      });
+      location.href = 'home.html';
+    } catch (err) {
+      document.getElementById('error').textContent = err.message;
+    }
+  };
+
+  document.getElementById('registerForm').onsubmit = async (e) => {
+    e.preventDefault();
+    try {
+      await api('/api/auth/register', 'POST', {
+        name: document.getElementById('regName').value,
+        email: document.getElementById('regEmail').value,
+        password: document.getElementById('regPassword').value
+      });
+      location.href = 'home.html';
+    } catch (err) {
+      document.getElementById('error').textContent = err.message;
+    }
+  };
+</script>
+</body>
+</html>

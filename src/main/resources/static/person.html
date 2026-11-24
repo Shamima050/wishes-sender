@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WishesSender - Connection</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="layout">
+  <nav class="sidebar" id="sidebar"></nav>
+  <main>
+    <!-- Header -->
+    <div class="card row space-between" style="background:linear-gradient(135deg,#4c1d95aa,#be185d77)">
+      <div class="row">
+        <div class="avatar" id="avatar" style="width:64px;height:64px;font-size:22px"></div>
+        <div><h1 id="name" style="margin:0"></h1><span class="tag" id="relation"></span></div>
+      </div>
+      <div class="row">
+        <a class="btn btn-coral" id="wishBtn">✍️ Write wish</a>
+        <a class="btn btn-outline" id="editBtn">Edit</a>
+        <button class="btn-outline" onclick="deletePerson()">Delete</button>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <!-- Overview -->
+      <div class="card">
+        <h2>Overview</h2>
+        <table id="details"></table>
+      </div>
+
+      <!-- Events -->
+      <div class="card">
+        <h2>Events</h2>
+        <div id="events"></div>
+        <h3 class="muted" style="margin-top:16px">Add event</h3>
+        <form id="eventForm">
+          <input name="title" placeholder="Title, e.g. Marriage anniversary" required>
+          <div class="row">
+            <select name="event_type" style="flex:1">
+              <option value="BIRTHDAY">Birthday</option>
+              <option value="ANNIVERSARY">Anniversary</option>
+              <option value="FESTIVAL">Festival</option>
+              <option value="CUSTOM" selected>Custom</option>
+            </select>
+            <input type="date" name="event_date" required style="flex:1">
+          </div>
+          <label><input type="checkbox" name="yearly" checked> Repeats every year</label><br><br>
+          <button type="submit">Add event</button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Festival suggestions based on religion -->
+    <div class="card">
+      <h2>🎉 Suggested festivals</h2>
+      <div id="festivals"></div>
+    </div>
+
+    <!-- Gifts -->
+    <div class="card" id="gifts">
+      <h2>🎁 Gift ideas <span class="muted" id="budget"></span></h2>
+      <div class="grid" id="giftList"></div>
+    </div>
+
+    <!-- Wish history -->
+    <div class="card">
+      <h2>💌 Wish history</h2>
+      <div id="wishes"></div>
+    </div>
+  </main>
+</div>
+
+<script src="js/app.js"></script>
+<script>
+  const id = param('id');
+  let person = null;
+
+  async function loadPerson() {
+    person = await api('/api/connections/' + id);
+    document.getElementById('name').textContent = person.name;
+    document.getElementById('avatar').innerHTML = initials(person.name);
+    document.getElementById('relation').textContent = person.relation;
+    document.getElementById('wishBtn').href = 'wish.html?connectionId=' + id;
+    document.getElementById('editBtn').href = 'people.html?edit=' + id;
+    document.getElementById('budget').textContent = '(budget ' + person.gift_min + ' - ' + person.gift_max + ' BDT)';
+
+    const rows = [
+      ['Phone', person.phone], ['Email', person.email], ['Address', person.address],
+      ['Birthday', fmtDate(person.dob)], ['Gender', person.gender], ['Religion', person.religion],
+      ['Interests', person.interests], ['Favourite dish', person.favourite_dish], ['Notes', person.notes]
+    ];
+    document.getElementById('details').innerHTML = rows
+      .map(r => '<tr><th>' + r[0] + '</th><td>' + esc(r[1] || '-') + '</td></tr>').join('');
+  }
+
+  async function loadEvents() {
+    const events = await api('/api/connections/' + id + '/events');
+    let html = '';
+    for (const e of events) {
+      const when = e.days_left >= 0 ? daysText(e.days_left) : 'Passed';
+      html += '<div class="list-item"><div>' + eventIcon(e.event_type) + ' <b>' + esc(e.title) + '</b><br>' +
+        '<span class="muted">' + fmtDate(e.next_date) + ' · ' + when + (e.yearly ? ' · yearly' : '') + '</span></div>' +
+        '<div class="row">' +
+        '<a class="btn btn-small" href="wish.html?connectionId=' + id + '&eventId=' + e.id + '">Wish</a>' +
+        '<button class="btn-small btn-outline" onclick="deleteEvent(' + e.id + ')">✕</button></div></div>';
+    }
+    document.getElementById('events').innerHTML = html || '<p class="muted">No events yet.</p>';
+  }
+
+  let festivals = [];
+
+  async function loadFestivals() {
+    festivals = await api('/api/festivals?religion=' + encodeURIComponent(person.religion || ''));
+    festivals = festivals.slice(0, 6);
+    document.getElementById('festivals').innerHTML = festivals.map((f, i) =>
+      '<span class="chip" title="Add as event" onclick="addFestival(' + i + ')">+ ' +
+      esc(f.name) + ' · ' + fmtDate(f.festival_date) + '</span>'
+    ).join('') || '<p class="muted">No upcoming festivals.</p>';
+  }
+
+  async function addFestival(i) {
+    const f = festivals[i];
+    try {
+      await api('/api/connections/' + id + '/events', 'POST',
+        { title: f.name, event_type: 'FESTIVAL', event_date: String(f.festival_date).substring(0, 10), yearly: 0 });
+      toast(f.name + ' added');
+      loadEvents();
+    } catch (err) {
+      toast(err.message);
+    }
+  }
+
+  async function loadGifts() {
+    const gifts = await api('/api/gifts/suggest?connectionId=' + id);
+    document.getElementById('giftList').innerHTML = gifts.map(giftCard).join('') ||
+      '<p class="muted">No gifts in this budget.</p>';
+  }
+
+  async function loadWishes() {
+    const wishes = await api('/api/wishes?connectionId=' + id);
+    document.getElementById('wishes').innerHTML = wishes.map(w =>
+      '<div class="list-item"><div><span class="tag ' + (w.status === 'SENT' ? 'green' : '') + '">' + w.status + '</span>' +
+      '<span class="tag">' + w.source + '</span> <span class="muted">' + fmtDate(w.created_at) + '</span><br>' +
+      esc(w.text) + '</div></div>'
+    ).join('') || '<p class="muted">No wishes yet.</p>';
+  }
+
+  document.getElementById('eventForm').onsubmit = async (e) => {
+    e.preventDefault();
+    const f = e.target.elements;   // the inputs, by name
+    try {
+      await api('/api/connections/' + id + '/events', 'POST', {
+        title: f['title'].value, event_type: f['event_type'].value,
+        event_date: f['event_date'].value, yearly: f['yearly'].checked ? 1 : 0
+      });
+      e.target.reset();
+      toast('Event added');
+      loadPerson();   // adding a birthday also sets the date of birth
+      loadEvents();
+    } catch (err) {
+      toast(err.message);   // e.g. "... already has a birthday"
+    }
+  };
+
+  async function deleteEvent(eventId) {
+    if (!confirm('Delete this event?')) return;
+    await api('/api/events/' + eventId, 'DELETE');
+    loadPerson();   // deleting the birthday also clears the date of birth
+    loadEvents();
+  }
+
+  async function deletePerson() {
+    if (!confirm('Delete ' + person.name + ' and all their events and wishes?')) return;
+    await api('/api/connections/' + id, 'DELETE');
+    location.href = 'people.html';
+  }
+
+  async function start() {
+    await loadLayout('people');
+    await loadPerson();
+    loadEvents();
+    loadFestivals();
+    loadGifts();
+    loadWishes();
+  }
+  start();
+</script>
+</body>
+</html>

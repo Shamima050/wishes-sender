@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WishesSender - Insights</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="layout">
+  <nav class="sidebar" id="sidebar"></nav>
+  <main>
+    <div class="row space-between">
+      <h1>📊 Insights</h1>
+      <div class="row">
+        <button class="btn-outline" onclick="exportCsv()">⬇ Export CSV</button>
+        <button class="btn-outline" onclick="window.print()">🖨 Print / PDF</button>
+      </div>
+    </div>
+    <p class="muted">These numbers come from SQL views in the database.</p>
+
+    <div class="grid-2">
+      <div class="card"><h2>Connections by relation</h2><div id="byRelation"></div></div>
+      <div class="card"><h2>Wishes by event type</h2><div id="byType"></div></div>
+    </div>
+    <div class="card"><h2>Events per month</h2><div id="perMonth"></div></div>
+  </main>
+</div>
+
+<script src="js/app.js"></script>
+<script>
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  let report = null;
+
+  // Draws simple horizontal bars with plain divs (no chart library needed)
+  function bars(rows, labelKey) {
+    if (rows.length === 0) return '<p class="muted">No data yet.</p>';
+    const max = Math.max(...rows.map(r => r.total));
+    return rows.map(r =>
+      '<div class="bar-row"><span class="label">' + esc(r[labelKey]) + '</span>' +
+      '<div class="bar" style="width:' + (r.total / max * 70) + '%"></div><b>' + r.total + '</b></div>'
+    ).join('');
+  }
+
+  async function start() {
+    await loadLayout('insights');
+    report = await api('/api/reports');
+    report.perMonth.forEach(r => r.month = months[r.month_no - 1]);
+    document.getElementById('byRelation').innerHTML = bars(report.byRelation, 'relation');
+    document.getElementById('byType').innerHTML = bars(report.wishesByType, 'event_type');
+    document.getElementById('perMonth').innerHTML = bars(report.perMonth, 'month');
+  }
+
+  function exportCsv() {
+    let csv = 'Report,Label,Total\n';
+    report.byRelation.forEach(r => csv += 'Connections by relation,' + r.relation + ',' + r.total + '\n');
+    report.perMonth.forEach(r => csv += 'Events per month,' + r.month + ',' + r.total + '\n');
+    report.wishesByType.forEach(r => csv += 'Wishes by event type,' + r.event_type + ',' + r.total + '\n');
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    link.download = 'wishes-sender-report.csv';
+    link.click();
+  }
+  start();
+</script>
+</body>
+</html>

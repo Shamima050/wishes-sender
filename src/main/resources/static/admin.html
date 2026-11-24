@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WishesSender - Admin</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="layout">
+  <nav class="sidebar" id="sidebar"></nav>
+  <main>
+    <h1>🛡️ Admin dashboard</h1>
+    <div class="grid" id="stats"></div>
+
+    <div class="card">
+      <h2>Users</h2>
+      <table id="users"></table>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <h2>Gift catalog</h2>
+        <form id="giftForm">
+          <div class="row">
+            <input name="name" placeholder="Gift name" required style="flex:2">
+            <select name="category" required style="flex:1">
+              <option>Books</option><option>Electronics</option><option>Home</option><option>Food</option>
+              <option>Flowers</option><option>Clothing</option><option>Experience</option><option>Travel</option>
+              <option>Art</option><option>Sports</option><option>Office</option><option>Other</option>
+            </select>
+          </div>
+          <div class="row">
+            <input type="number" name="price" placeholder="Price (BDT)" required min="1" style="flex:1">
+            <select name="event_type" style="flex:1">
+              <option>ANY</option><option>BIRTHDAY</option><option>ANNIVERSARY</option><option>FESTIVAL</option>
+            </select>
+            <input name="tag" placeholder="Interest tag" required style="flex:1">
+          </div>
+          <input name="reason" placeholder="Why this gift?" required>
+          <button type="submit">Add gift</button>
+        </form>
+        <table id="gifts" style="margin-top:12px"></table>
+      </div>
+
+      <div class="card">
+        <h2>Festivals</h2>
+        <form id="festForm">
+          <input name="name" placeholder="Festival name" required>
+          <div class="row">
+            <input type="date" name="festival_date" required style="flex:1">
+            <select name="religion" style="flex:1">
+              <option>All</option><option>Islam</option><option>Hinduism</option>
+              <option>Christian</option><option>Buddhism</option>
+            </select>
+          </div>
+          <input name="region" placeholder="Region" value="Bangladesh">
+          <button type="submit">Add festival</button>
+        </form>
+        <table id="festivals" style="margin-top:12px"></table>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script src="js/app.js"></script>
+<script>
+  async function loadStats() {
+    const s = await api('/api/admin/stats');
+    document.getElementById('stats').innerHTML = ['users', 'connections', 'events', 'wishes'].map(k =>
+      '<div class="card stat"><div class="num">' + s[k] + '</div><div class="muted">' + k + '</div></div>').join('');
+  }
+
+  async function loadUsers() {
+    const list = await api('/api/admin/users');
+    document.getElementById('users').innerHTML =
+      '<tr><th>ID</th><th>Name</th><th>Email</th><th>Role</th><th>Connections</th><th></th></tr>' +
+      list.map(u => '<tr><td>' + u.id + '</td><td>' + esc(u.name) + '</td><td>' + esc(u.email) + '</td>' +
+        '<td><span class="tag">' + u.role + '</span></td>' +
+        '<td><a href="connections.html?scope=all&userId=' + u.id + '">' + u.connections + '</a></td><td>' +
+        (u.role === 'ADMIN' ? '' : '<button class="btn-small btn-outline" onclick="del(\'users\',' + u.id + ')">Delete</button>') +
+        '</td></tr>').join('');
+  }
+
+  async function loadGifts() {
+    const list = await api('/api/admin/gifts');
+    document.getElementById('gifts').innerHTML = '<tr><th>Gift</th><th>Price</th><th>Type</th><th></th></tr>' +
+      list.map(g => '<tr><td>' + esc(g.name) + '</td><td>' + g.price + '</td><td>' + g.event_type + '</td>' +
+        '<td><button class="btn-small btn-outline" onclick="del(\'gifts\',' + g.id + ')">✕</button></td></tr>').join('');
+  }
+
+  async function loadFestivals() {
+    const list = await api('/api/admin/festivals');
+    document.getElementById('festivals').innerHTML = '<tr><th>Festival</th><th>Date</th><th>Religion</th><th></th></tr>' +
+      list.map(f => '<tr><td>' + esc(f.name) + '</td><td>' + fmtDate(f.festival_date) + '</td><td>' + esc(f.religion) + '</td>' +
+        '<td><button class="btn-small btn-outline" onclick="del(\'festivals\',' + f.id + ')">✕</button></td></tr>').join('');
+  }
+
+  async function del(kind, id) {
+    if (!confirm('Delete this item?')) return;
+    await api('/api/admin/' + kind + '/' + id, 'DELETE');
+    loadAll();
+  }
+
+  document.getElementById('giftForm').onsubmit = async (e) => {
+    e.preventDefault();
+    try {
+      await api('/api/admin/gifts', 'POST', Object.fromEntries(new FormData(e.target)));
+      e.target.reset();
+      loadGifts();
+    } catch (err) {
+      toast(err.message);
+    }
+  };
+
+  document.getElementById('festForm').onsubmit = async (e) => {
+    e.preventDefault();
+    try {
+      await api('/api/admin/festivals', 'POST', Object.fromEntries(new FormData(e.target)));
+      e.target.reset();
+      loadFestivals();
+    } catch (err) {
+      toast(err.message);
+    }
+  };
+
+  function loadAll() {
+    loadStats(); loadUsers(); loadGifts(); loadFestivals();
+  }
+
+  async function start() {
+    const me = await loadLayout('admin');
+    if (me.role !== 'ADMIN') {
+      document.querySelector('main').innerHTML = '<h1>Admins only</h1>';
+      return;
+    }
+    loadAll();
+  }
+  start();
+</script>
+</body>
+</html>

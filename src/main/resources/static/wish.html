@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WishesSender - Wish Studio</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="layout">
+  <nav class="sidebar" id="sidebar"></nav>
+  <main>
+    <h1>✍️ Wish Studio</h1>
+    <div class="grid-2">
+      <!-- Left: options + editor -->
+      <div class="card">
+        <label>Person</label>
+        <select id="person" onchange="personChanged()"></select>
+        <label>Occasion</label>
+        <select id="event" onchange="loadGifts()"></select>
+
+        <label>Tone</label><br>
+        <div id="tones"></div>
+
+        <label>Language</label>
+        <select id="language"><option>English</option><option>Bangla</option></select>
+
+        <button onclick="generate()" id="genBtn">✨ Generate wish</button>
+        <span class="muted" id="sourceInfo"></span>
+
+        <label style="display:block;margin-top:14px">Your wish (you can edit it)</label>
+        <textarea id="text" oninput="updatePreview()"></textarea>
+
+        <div class="row">
+          <button class="btn-outline" onclick="copyText()">📋 Copy</button>
+          <button class="btn-outline" onclick="save('SAVED')">💾 Save</button>
+          <button class="btn-coral" onclick="save('SENT')">✅ Mark as sent</button>
+        </div>
+      </div>
+
+      <!-- Right: live preview + gifts -->
+      <div>
+        <div class="card">
+          <h2>Preview</h2>
+          <div class="bubble" id="preview">Your wish will appear here...</div>
+        </div>
+        <div class="card">
+          <h2>🎁 Gift ideas</h2>
+          <div id="gifts" style="display:grid;gap:10px"></div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script src="js/app.js"></script>
+<script>
+  const tones = ['Formal', 'Emotional', 'Funny', 'Romantic'];
+  let tone = 'Emotional';
+  let source = 'TEMPLATE';
+  let events = [];
+
+  function renderTones() {
+    document.getElementById('tones').innerHTML = tones.map(t =>
+      '<span class="chip ' + (t === tone ? 'active' : '') + '" onclick="tone=\'' + t + '\'; renderTones()">' + t + '</span>'
+    ).join('');
+  }
+
+  async function loadPeople() {
+    const people = await api('/api/connections');
+    if (people.length === 0) {
+      document.querySelector('main').innerHTML += '<p class="muted">Add a person first on the <a href="people.html">People</a> page.</p>';
+    }
+    document.getElementById('person').innerHTML = people
+      .map(p => '<option value="' + p.id + '">' + esc(p.name) + ' (' + esc(p.relation) + ')</option>').join('');
+    if (param('connectionId')) document.getElementById('person').value = param('connectionId');
+  }
+
+  async function personChanged() {
+    const personId = document.getElementById('person').value;
+    if (!personId) return;
+    events = await api('/api/connections/' + personId + '/events');
+    document.getElementById('event').innerHTML = '<option value="">General wish</option>' + events
+      .map(e => '<option value="' + e.id + '">' + eventIcon(e.event_type) + ' ' + esc(e.title) + '</option>').join('');
+    if (param('eventId')) document.getElementById('event').value = param('eventId');
+    loadGifts();
+  }
+
+  async function loadGifts() {
+    const personId = document.getElementById('person').value;
+    const eventId = document.getElementById('event').value;
+    const ev = events.find(e => String(e.id) === eventId);
+    const type = ev ? ev.event_type : 'ANY';
+    const gifts = await api('/api/gifts/suggest?connectionId=' + personId + '&eventType=' + type);
+    document.getElementById('gifts').innerHTML = gifts.slice(0, 3).map(giftCard).join('') ||
+      '<p class="muted">No gifts in budget.</p>';
+  }
+
+  async function generate() {
+    const btn = document.getElementById('genBtn');
+    btn.disabled = true;
+    btn.textContent = 'Generating...';
+    try {
+      const result = await api('/api/wishes/generate', 'POST', {
+        connectionId: document.getElementById('person').value,
+        eventId: document.getElementById('event').value,
+        tone: tone,
+        language: document.getElementById('language').value
+      });
+      source = result.source;
+      document.getElementById('text').value = result.text;
+      document.getElementById('sourceInfo').textContent = result.source === 'AI'
+        ? 'Written by Gemini AI'
+        : (result.aiConfigured ? 'AI is off or failed - used a template' : 'No Gemini key - used a template');
+      updatePreview();
+    } catch (err) {
+      toast(err.message);
+    }
+    btn.disabled = false;
+    btn.textContent = '🔄 Regenerate';
+  }
+
+  function updatePreview() {
+    document.getElementById('preview').textContent = document.getElementById('text').value || 'Your wish will appear here...';
+  }
+
+  function copyText() {
+    navigator.clipboard.writeText(document.getElementById('text').value);
+    toast('Copied! Paste it in WhatsApp / Messenger');
+  }
+
+  async function save(status) {
+    const text = document.getElementById('text').value;
+    if (!text) return toast('Generate or write a wish first');
+    try {
+      const saved = await api('/api/wishes', 'POST', {
+        connectionId: document.getElementById('person').value,
+        eventId: document.getElementById('event').value,
+        tone: tone,
+        language: document.getElementById('language').value,
+        text: text,
+        source: source,
+        status: status
+      });
+      if (status !== 'SENT') {
+        toast('Saved to history');
+      } else if (saved.remindersCleared) {
+        toast('Marked as sent 🎉 Reminder cleared');
+        loadLayout('wish');   // refresh the 🔔 badge in the menu
+      } else {
+        toast('Marked as sent 🎉');
+      }
+    } catch (err) {
+      toast(err.message);
+    }
+  }
+
+  async function start() {
+    await loadLayout('wish');
+    renderTones();
+    await loadPeople();
+    await personChanged();
+  }
+  start();
+</script>
+</body>
+</html>

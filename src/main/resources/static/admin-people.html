@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WishesSender - People (Admin)</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="layout">
+  <nav class="sidebar" id="sidebar"></nav>
+  <main>
+    <h1>🧑‍🤝‍🧑 People</h1>
+    <p class="muted">Everyone registered on WishesSender. Click <b>Connections</b> to see the people they care about.</p>
+
+    <div class="card">
+      <input id="q" placeholder="🔍 Search by name or email..." oninput="render()">
+      <p class="muted" id="count"></p>
+      <div class="table-wrap"><table id="table"></table></div>
+    </div>
+  </main>
+</div>
+
+<script src="js/app.js"></script>
+<script>
+  let users = [];
+
+  function render() {
+    const q = document.getElementById('q').value.trim().toLowerCase();
+    const list = users.filter(u => !q || u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q));
+    document.getElementById('count').textContent = list.length + ' of ' + users.length + ' people';
+    document.getElementById('table').innerHTML =
+      '<tr><th>Name</th><th>Email</th><th>Role</th><th>Joined</th><th>Connections</th><th>Events</th><th>Wishes</th><th></th></tr>' +
+      list.map(u => '<tr>' +
+        '<td><b>' + esc(u.name) + '</b></td><td>' + esc(u.email) + '</td>' +
+        '<td><span class="tag ' + (u.role === 'ADMIN' ? 'gold' : '') + '">' + u.role + '</span></td>' +
+        '<td>' + fmtDate(u.created_at) + '</td>' +
+        '<td>' + u.connections + '</td><td>' + u.events + '</td><td>' + u.wishes + '</td>' +
+        '<td class="row">' +
+        '<a class="btn btn-small" href="connections.html?scope=all&userId=' + u.id + '">Connections</a>' +
+        (u.role === 'ADMIN' ? '' : '<button class="btn-small btn-outline" onclick="removeUser(' + u.id + ')">Delete</button>') +
+        '</td></tr>').join('');
+  }
+
+  async function load() {
+    users = await api('/api/admin/users');
+    render();
+  }
+
+  async function removeUser(id) {
+    if (!confirm('Delete this user and all their connections, events and wishes?')) return;
+    await api('/api/admin/users/' + id, 'DELETE');
+    toast('User deleted');
+    load();
+  }
+
+  async function start() {
+    const me = await loadLayout('admin-people');
+    if (me.role !== 'ADMIN') {
+      location.href = 'home.html';
+      return;
+    }
+    load();
+  }
+  start();
+</script>
+</body>
+</html>

@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WishesSender - People</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="layout">
+  <nav class="sidebar" id="sidebar"></nav>
+  <main>
+    <div class="row space-between">
+      <h1>👥 People</h1>
+      <button onclick="openForm(null)">+ Add connection</button>
+    </div>
+
+    <!-- Add / Edit form (hidden until needed) -->
+    <div class="card hidden" id="formCard">
+      <h2 id="formTitle">Add connection</h2>
+      <form id="personForm">
+        <div class="grid-2">
+          <div>
+            <h3 class="muted">1. Basics</h3>
+            <label>Name *</label><input name="name" required>
+            <label>Relation *</label>
+            <select name="relation" required>
+              <option>Family</option><option>Friend</option><option>Partner</option>
+              <option>Colleague</option><option>Client</option><option>Customer</option>
+            </select>
+            <label>Date of birth (birthday event is added automatically)</label><input type="date" name="dob">
+            <label>Gender</label>
+            <select name="gender"><option value="">-</option><option>Female</option><option>Male</option><option>Other</option></select>
+            <label>Religion (used for festival suggestions)</label>
+            <select name="religion">
+              <option value="">-</option><option>Islam</option><option>Hinduism</option>
+              <option>Christian</option><option>Buddhism</option><option>Other</option>
+            </select>
+          </div>
+          <div>
+            <h3 class="muted">2. Contact</h3>
+            <label>Phone</label><input name="phone">
+            <label>Email</label><input type="email" name="email">
+            <label>Address</label><input name="address">
+            <h3 class="muted">3. Preferences</h3>
+            <label>Interests (comma separated, e.g. books, music, coffee)</label><input name="interests">
+            <label>Favourite dish</label><input name="favourite_dish">
+            <div class="row">
+              <div style="flex:1"><label>Gift budget min (BDT)</label><input type="number" name="gift_min" value="0" min="0"></div>
+              <div style="flex:1"><label>Gift budget max (BDT)</label><input type="number" name="gift_max" value="5000" min="0"></div>
+            </div>
+          </div>
+        </div>
+        <h3 class="muted">4. Notes</h3>
+        <textarea name="notes" style="min-height:60px"></textarea>
+        <div class="row">
+          <button type="submit">Save</button>
+          <button type="button" class="btn-outline" onclick="closeForm()">Cancel</button>
+        </div>
+      </form>
+    </div>
+
+    <!-- Search and filters -->
+    <input id="search" placeholder="🔍 Search by name..." oninput="loadPeople()">
+    <div id="chips"></div>
+
+    <div class="grid" id="people"></div>
+  </main>
+</div>
+
+<script src="js/app.js"></script>
+<script>
+  const relations = ['All', 'Family', 'Friend', 'Partner', 'Colleague', 'Client', 'Customer'];
+  let currentRelation = '';
+  let editingId = null;
+  const form = document.getElementById('personForm');
+
+  function renderChips() {
+    document.getElementById('chips').innerHTML = relations.map(r => {
+      const value = r === 'All' ? '' : r;
+      return '<span class="chip ' + (value === currentRelation ? 'active' : '') +
+             '" onclick="currentRelation=\'' + value + '\'; renderChips(); loadPeople()">' + r + '</span>';
+    }).join('');
+  }
+
+  async function loadPeople() {
+    const q = encodeURIComponent(document.getElementById('search').value);
+    const people = await api('/api/connections?q=' + q + '&relation=' + currentRelation);
+    let html = '';
+    for (const p of people) {
+      const days = p.next_in_days;
+      const ringClass = days === 0 ? 'today' : (days !== null && days <= 7 ? 'soon' : '');
+      const ring = days === null ? '<div class="ring">-</div>'
+        : '<div class="ring ' + ringClass + '">' + days + '<small>days</small></div>';
+      html += '<a class="card row" href="person.html?id=' + p.id + '" style="color:inherit">' +
+        '<div class="avatar">' + initials(p.name) + '</div>' +
+        '<div style="flex:1"><b>' + esc(p.name) + '</b><br><span class="tag">' + esc(p.relation) + '</span></div>' +
+        ring + '</a>';
+    }
+    document.getElementById('people').innerHTML = html || '<p class="muted">No connections found.</p>';
+  }
+
+  async function openForm(id) {
+    editingId = id;
+    form.reset();
+    document.getElementById('formTitle').textContent = id ? 'Edit connection' : 'Add connection';
+    if (id) {
+      const p = await api('/api/connections/' + id);
+      for (const el of form.elements) {
+        if (el.name && p[el.name] !== null && p[el.name] !== undefined) {
+          el.value = el.type === 'date' ? String(p[el.name]).substring(0, 10) : p[el.name];
+        }
+      }
+    }
+    document.getElementById('formCard').classList.remove('hidden');
+    window.scrollTo(0, 0);
+  }
+
+  function closeForm() {
+    document.getElementById('formCard').classList.add('hidden');
+  }
+
+  form.onsubmit = async (e) => {
+    e.preventDefault();
+    const data = Object.fromEntries(new FormData(form));   // { name: "...", relation: "...", ... }
+    try {
+      const saved = editingId
+        ? await api('/api/connections/' + editingId, 'PUT', data)
+        : await api('/api/connections', 'POST', data);
+      location.href = 'person.html?id=' + saved.id;
+    } catch (err) {
+      toast(err.message);
+    }
+  };
+
+  async function start() {
+    await loadLayout('people');
+    renderChips();
+    await loadPeople();
+    if (param('edit')) openForm(param('edit'));
+    if (param('add')) openForm(null);
+  }
+  start();
+</script>
+</body>
+</html>
